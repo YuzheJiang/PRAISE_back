@@ -1,15 +1,43 @@
+from datetime import datetime, timedelta
+from dateutil import tz
 import pandas as pd
+import numpy as np
+import os
 
-root_dir = 'data/data_1.csv'
+# Global variables
 latExtent = [22.16,22.5277]
 lonExtent = [113.816, 114.442]
+
 cellCount = [41, 64]
 cellSizeCoord = [0.01, 0.009]
 
-def read_csv_file(dir):
-    ''' Reads a csv file and returns a dataframe'''
-    df = pd.read_csv(dir)
-    return df
+def get_pollutant_data(dir):
+    return np.load(dir + "_full.npy")
+
+def UTC2HKT(timestamp):
+    from_zone = tz.gettz('UTC')
+    to_zone = tz.gettz('Asia/Hong_Kong')
+    fmt = '%Y-%m-%d %H:%M:%S'
+
+    utc = datetime.strptime(str(datetime.utcfromtimestamp(float(timestamp))), '%Y-%m-%d %H:%M:%S')
+    utc = utc.replace(tzinfo=from_zone)
+
+    HK_T = utc.astimezone(to_zone).strftime(fmt)
+    return HK_T
+
+def timeInHKT(time_array):
+    time_HKT = []
+    for x in time_array:
+        time_HKT.append(UTC2HKT(x))
+    return time_HKT
+
+def data(pollutant_data):
+    time = np.load("data/time_full.npy")
+    time_data = timeInHKT(time)
+    data = dict()
+    for i,j in zip(time_data,pollutant_data):
+        data[i] = j
+    return data
 
 def coordinate_data():
     Features = []
@@ -25,18 +53,35 @@ def coordinate_data():
             coords = [bottomLeft, bottomRight, topRight, topLeft]
             rect["x"], rect["y"], rect["coord"] = cell_x, cell_y, coords
             Features.append(rect)
-    df = pd.DataFrame.from_records(Features)
-    return df
+    return Features
 
-def get_pollutant_data(filter_col):
-    ''' Filters dataframe column corresponding to users preference on pollutants'''
-    df = read_csv_file(root_dir)
-    result = pd.concat([df.iloc[:, :4 ], df[filter_col]], axis=1).drop(['lon','lat'], axis =1)
-    result.rename(columns={filter_col: "pollutant"}, inplace = True)
-    feature = coordinate_data()
-    merge_df = pd.merge(feature, result,  how='left', on =['x', 'y'])
-    data = merge_df.to_json(orient='records')
-    return data
+def final_data(whole_data, datetime, future_hour):
+    d = whole_data[datetime][int(future_hour)]
+    coords = coordinate_data()
+    for i in coords:
+        i['pollutant'] = d[i['y']][i['x']]
+    return coords
+# def final_data(whole_data, datetime):
+#     d = whole_data[datetime]
+#     dic = {}
+#     for i in range(0,13):
+#         dic[i] = coordinate_data()
+#         for j in dic[i]:
+#             j['pollutant'] = d[i][j['y']][j['x']]
+#     return dic
+
+def map_data(Pollutant,Future_hour,Method,Date_time):
+    if Method == 'CMAQ':
+        root_dir = 'data/CMAQ/' + 'PM10'
+        pol_data = get_pollutant_data(root_dir)
+    else:
+        root_dir ='data/Our_method/'
+        pol_data = get_pollutant_data(root_dir)
+    whole_data = data(pol_data)
+    final_data_ = final_data(whole_data, Date_time, Future_hour)
+    df = pd.DataFrame.from_records(final_data_)
+    f = df.to_json(orient='records')
+    return f
 
 def data_lineChart_1(code):
     if code == "AA":
@@ -44,7 +89,7 @@ def data_lineChart_1(code):
                 [3, 0.9788165646638738], [4, 0.7148370928364787], [5, 0.385004780669326],
                 [6, 0.12485382497514497], [7, 0.8933176518358881], [8, 0.2054264321062833],
                 [9, 0.560230657133687], [10, 0.4703659729933596], [11, 0.7480074504850349],
-                [12, 0.868300449736342]] 
+                [12, 0.868300449736342]]
         df = pd.DataFrame(data, columns = ['x', 'y'])
         result = df.to_json(orient='records')
         return result
@@ -73,7 +118,7 @@ def data_lineChart_2(code):
                 [3, 0.9788165646638738], [4, 0.7148370928364787], [5, 0.385004780669326],
                 [6, 0.12485382497514497], [7, 0.8933176518358881], [8, 0.2054264321062833],
                 [9, 0.560230657133687], [10, 0.4703659729933596], [11, 0.7480074504850349],
-                [12, 0.868300449736342]] 
+                [12, 0.868300449736342]]
         df = pd.DataFrame(data, columns = ['x', 'y'])
         result = df.to_json(orient='records')
         return result
