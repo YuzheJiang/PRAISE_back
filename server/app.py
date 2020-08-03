@@ -17,10 +17,9 @@ def get_allData():
 @app.route("/data", methods=['POST'])
 def load_data():
     filter_data = request.get_json()
-    Method = filter_data['Method']
     Pollutant = filter_data['pollutants']
     Date_time = filter_data['Date']
-    return dataprocessing.map_data(Method,Pollutant,Date_time)
+    return dataprocessing.map_data(Pollutant,Date_time)
 
 @app.route("/lineChart1", methods=['POST'])
 def lineChart1():

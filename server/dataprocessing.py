@@ -103,17 +103,32 @@ def final_data(Pollutant,whole_data, Date_time):
     return dic
 
 # Getting the final data for plotting the map
-def map_data(Method,Pollutant,Date_time):
-    if Method == 'CMAQ':
-        root_dir = 'data/CMAQ/' + Pollutant
+# def map_data(Method,Pollutant,Date_time):
+#     if Method == 'CMAQ':
+#         root_dir = 'data/CMAQ/' + Pollutant
+#         pol_data = get_pollutant_data(root_dir)
+#     else:
+#         root_dir ='data/Our_method/' + Pollutant
+#         pol_data = get_pollutant_data(root_dir)
+#     whole_data = data(pol_data)
+#     final_data_ = final_data(Pollutant, whole_data, Date_time)
+#     df = pd.DataFrame.from_records(final_data_)
+#     f = df.to_json(orient='records')
+#     return f
+
+def map_data(Pollutant, Date_time):
+    df_list =[]
+    for i in ['CMAQ', 'Our_method']:
+        print(i)
+        root_dir = 'data/'+ i + '/' + Pollutant
         pol_data = get_pollutant_data(root_dir)
-    else:
-        root_dir ='data/Our_method/' + Pollutant
-        pol_data = get_pollutant_data(root_dir)
-    whole_data = data(pol_data)
-    final_data_ = final_data(Pollutant, whole_data, Date_time)
-    df = pd.DataFrame.from_records(final_data_)
-    f = df.to_json(orient='records')
+        whole_data = data(pol_data)
+        final_data_ = final_data(Pollutant, whole_data, Date_time)
+        df = pd.DataFrame.from_records(final_data_)
+        df['Name'] = i + '_data'
+        df_list.append(df)
+    df_new = pd.concat([df_list[0],df_list[1]])
+    f = df_new.to_json(orient='records')
     return f
 
       #########################################################################################################
@@ -152,7 +167,7 @@ def method_linedata(code, polu, start_date, end_date, Future_hour):
     
     df_list = []
 #     for i in ['CMAQ', 'Our_Method']
-    for i in ['CMAQ']:
+    for i in ['CMAQ', 'Our_method']:
         root_dir = 'data/'+ i + '/' + polu
         pol_data = get_pollutant_data(root_dir)
         whole_data = data(pol_data)
