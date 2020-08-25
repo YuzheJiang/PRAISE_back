@@ -1,4 +1,5 @@
 # PRAISE_back
-Get the data from the server (both CMAQ and Our_method).
-Create a folder named "CMAQ" inside data folder and place all the CMAQ data there.
-Create a folder named "Our_method" inside the data folder and place all the Our_method data there.
+Create a data folder inside the server folder.
+Inside the data folder create CMAQ, Our_method and obs folder and place the respective data inside these folder.
+Type python datasplit.py in the terminal. This command will create a cache folder with all the preprocessed data.
+Finally run python app.py to start the backend.
