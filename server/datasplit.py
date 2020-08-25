@@ -9,7 +9,7 @@ import os
 time = np.load('data/time_full.npy')
 
 def get_pollutant_data(dir):
-    return np.load(dir + "_full.npy")
+    return np.load(dir + ".npy")
     
 # Formula for the timestamp conversion(UTC to HKT)
 def UTC2HKT(timestamp):
