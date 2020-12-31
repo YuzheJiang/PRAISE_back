@@ -15,45 +15,37 @@ lonExtent = [113.816, 114.442]
 cellCount = [41, 64]
 cellSizeCoord = [0.01, 0.009]
 
-# Code for concentration map
+# def check_month(d, directory):
+#     month = datetime.strptime(d, '%Y-%m-%d %H:%M:%S').month
+#     for i in os.listdir(directory):
+#         if i.endswith('.npy') and datetime.strptime(i[:-4], '%Y-%m-%d %H:%M:%S').month == month:
+#             path = os.path.join(directory,i)
+#     return path
 
-# Loading the pollutant data
-def get_pollutant_data(dir):
-    return np.load(dir + "_full.npy")
-
-# Formula for the timestamp conversion(UTC to HKT)
-def UTC2HKT(timestamp):
-    from_zone = tz.gettz('UTC')
-    to_zone = tz.gettz('Asia/Hong_Kong')
-    fmt = '%Y-%m-%d %H:%M:%S'
-
-    utc = datetime.strptime(str(datetime.utcfromtimestamp(float(timestamp))), '%Y-%m-%d %H:%M:%S')
-    utc = utc.replace(tzinfo=from_zone)
-
-    HK_T = utc.astimezone(to_zone).strftime(fmt)
-    return HK_T
-
-# Code for actual conversion(UTC to HKT)
-def timeInHKT(time_array):
-    time_HKT = []
-    for x in time_array:
-        time_HKT.append(UTC2HKT(x))
-    return time_HKT
-
-# Getting the time data
-def data(pollutant_data):
-    time = np.load("data/time_full.npy")
-    time_data = timeInHKT(time)
-    data = dict()
-    for i,j in zip(time_data,pollutant_data):
-        data[i] = j
-    return data
+def obs_data(Pollutant, Date_time):
+    date_list = [(datetime.strptime(Date_time, '%Y-%m-%d %H:%M:%S') + timedelta(hours=x)).strftime('%Y-%m-%d %H:%M:%S') for x in range(0,13)]
+    df = pd.read_csv('data/cache/obs/Obs_data.csv', usecols=['time',Pollutant, 'x', 'y']).rename(columns={Pollutant: "Pollutant"})
+    df = df[df['time'].isin(date_list)]
+    grouped = df.groupby(['time'])
+    d = {}
+    for index, group_item in enumerate(grouped):
+        lis = []
+        for i in group_item[1].iterrows():
+            dic = {}
+            dic['Pollutant'], dic['x'], dic['y'] = i[1]['Pollutant'], i[1]['x'], i[1]['y']
+            lis.append(dic)
+        d[index] = lis
+    return json.dumps(d)
 
 # Getting the coordinate range for plotting the map
 def coordinate_data():
     Features = []
     coordinate_list = [[37,13], [34,13], [33,14], [40,14], [31,22], [41,17], [55,34], [35,18], 
                    [34,19], [37,24], [13,14], [45,17], [16,25], [35,32], [30,23], [21,31]]
+    # coordinate_list = [[7, 20], [21, 5],[26, 30],[29, 21],[29, 14],[35, 14],[35, 17],[35, 9],[36, 31],[39, 27],
+    #               [8, 11], [39, 16], [39, 22], [40, 6], [41, 35], [43, 17], [45, 19], [45, 24], [10, 17],
+    #               [48, 2], [54, 34], [45, 19], [35, 15], [35, 17], [10, 16], [15, 25], [16, 34], [16, 34],
+    #               [19, 34], [21, 4]]
     for i in range(0,cellCount[0]):
         cell_y = i
         for j in range(0, cellCount[1]):
@@ -69,58 +61,53 @@ def coordinate_data():
             else:
                 rect["x"], rect["y"], rect["coord"], rect['data'] = cell_x, cell_y, coords, 'Grid_data'
             Features.append(rect)
-    return Features
+    return json.dumps(Features)
 
-# Getting Observation data for map
-def Obs_mapdata(Pollutant, Date_time):
-    files = sorted(glob('data/obs/*.csv'))
-    date_list = [(datetime.strptime(Date_time, '%Y-%m-%d %H:%M:%S') + timedelta(hours=x)).strftime('%Y-%m-%d %H:%M:%S') for x in range(0,13)]
-    df = pd.concat((pd.read_csv(file, index_col=0)for file in files), ignore_index = True)
-    df.sort_values(by=['time', 'station_code'])
-    df['time'] =  pd.to_datetime(df['time'])
-    df = df[df['time'].isin(date_list)]
-    grouped = df.groupby(['time'])
-    data_obs = []
-    for index, group_item in enumerate(grouped): 
-        new_df = pd.DataFrame(index=[i for i in range(0,41)], columns=[i for i in range(0,64)]).fillna(0)
-        grouped_df = group_item[1].rename(columns={Pollutant:'Pollutant'})[['Pollutant', 'x', 'y']]
-        for index, row in grouped_df.iterrows():
-            new_df[row['x']][row['y']] = row['Pollutant']
-        data_obs.append(new_df.values)
-    result = np.array(data_obs)
-    return result
-
-# Assigning the pollutant value to the grid coordinates
-def final_data(Pollutant,whole_data, Date_time):
-    d = whole_data[Date_time]
-    obs_data = Obs_mapdata(Pollutant, Date_time)
+def get_data(date, Pollutant):
+    month = [datetime.strptime(date, '%Y-%m-%d %H:%M:%S').month]
     dic = {}
-    for i in range(0,13):
-        dic[i] = coordinate_data()
-        for j in dic[i]:
-            j['pollutant'] = d[i][j['y']][j['x']]
-            j['Obs_con'] = obs_data[i][j['y']][j['x']]
-    return dic
-
-# Getting the final data for plotting the map
-def map_data(Method,Pollutant,Date_time):
-    if Method == 'CMAQ':
-        root_dir = 'data/CMAQ/' + Pollutant
-        pol_data = get_pollutant_data(root_dir)
+    for i in ['CMAQ', 'Our_method'] :
+        directory = os.path.join('data','cache',i,Pollutant)
+        data, filename = month_data(month, directory)
+        diff = datetime.strptime(date, '%Y-%m-%d %H:%M:%S')-datetime.strptime(filename[:-4], '%Y-%m-%d %H:%M:%S')
+        hours = diff.days * 24 + diff.seconds // 3600
+        dic[i] = data[hours].tolist()
+    return json.dumps(dic)      
+       
+def time_poldata(method, pol_data, start_date):
+    year = start_date.year
+    if method == 'CMAQ' and year == '2017':
+        time_data = np.load("data/cache/time_data_CMAQ.npy")
+    elif method == 'CMAQ' and year == '2018':
+        time_data = np.load("data/cache/time_data_CMAQ_2018.npy")
+    elif method == 'Our_method' and year == '2017':
+        time_data = np.load("data/cache/time_data_Model.npy")
     else:
-        root_dir ='data/Our_method/' + Pollutant
-        pol_data = get_pollutant_data(root_dir)
-    whole_data = data(pol_data)
-    final_data_ = final_data(Pollutant, whole_data, Date_time)
-    df = pd.DataFrame.from_records(final_data_)
-    f = df.to_json(orient='records')
-    return f
+        time_data = np.load("data/cache/time_data_Model.npy")
+    df = pd.DataFrame(time_data, columns = ['time'])
+    df = df[df.time >= str(start_date)]
+    data = {}
+    for i,j in zip(df.iterrows(),pol_data):
+        data[i[1]['time']] = j
+    return data
 
-      #########################################################################################################
-    
-# Code for plotting the line chart
+def month_data(month_list, direc):
+    final_data = []
+    for file in os.listdir(direc):
+        if file.endswith('.npy') and datetime.strptime(file[:-4], '%Y-%m-%d %H:%M:%S').month in month_list:
+            data = np.load(os.path.join(direc,file))
+            final_data.append(data)
+    return np.concatenate(final_data), file
 
-# Station name with grid coordinates
+# Getting the metrics value 
+def metrics(df_1, df_2):
+    act = df_1['Pollutant'].values
+    pred = df_2['Pollutant'].values
+    rmse = round(sqrt(mean_squared_error(act, pred)),2)
+    ioa = round(1 -(np.sum((act-pred)**2))/(np.sum((np.abs(pred-np.mean(act))+np.abs(act-np.mean(act)))**2)), 2)
+    return rmse, ioa
+
+# Station code with coordinates
 def station_coord(key):
     d= {'CB_R': [37,13], 
         'CL_R': [34,13],
@@ -140,56 +127,128 @@ def station_coord(key):
         'YL_A': [21,31]}
     return d[key]
 
-# Getting data from CMAQ and our method for time range
-def method_linedata(code, polu, start_date, end_date, Future_hour):
-    # variables
+def onsite_coord(key):
+    d = {'S0021'  : [41,29],
+#         'S0004b' : [45, 24],
+        'S0009'  : [33, 19],
+#         'S0028b' : [42, 12],
+        'S0008'  : [36, 16],
+        'S0020'  : [31, 36],
+        'C0005'  : [39, 17],
+        'S0022'  : [35, 32],
+        'S0023'  : [40, 19],
+#         'S0033'  : [33, 13],
+        'S0027'  : [39, 8],
+#         'C0006a' : [34, 13],
+#         'S0032'  : [41, 17],
+#         'S0009b' : [33, 19],
+        'C0001'  : [30, 23],
+        'S0018'  : [23, 31],
+        'S0024'  : [36, 23],
+        'S0030'  : [34, 10],
+#         'S0031'  : [41, 26],
+        'S0025'  : [37, 24],
+        'S0019'  : [31, 38],
+#         'S0013b' : [12, 13],
+#         'S0022b' : [35, 32],
+#         'S0014b' : [15, 27],
+#         'S0015b' : [15, 23],
+#         'C0002e' : [35, 16],
+#         'S0020b' : [31, 36],
+        'C0003a' : [37, 13],
+        'C0002d' : [35, 16],
+        'C0003b' : [37, 13],
+#         'S0016b' : [38, 20],
+#         'S0017b' : [21, 31],
+        'C0002c' : [35, 16],
+        'C0002b' : [35, 16],
+#         'S0021b' : [41, 29],
+        'S0014'  : [15, 27],
+        'S0028'  : [42, 12],
+        'S0029'  : [41, 8],
+        'S0015'  : [15, 23],
+        'S0001'  : [41, 18],
+#         'S0030b' : [34, 10],
+        'S0017'  : [21, 31],
+        'S0003'  : [36, 18],
+        'S0002'  : [42, 15],
+        'S0016'  : [38, 20],
+        'S0012'  : [36, 20],
+        'C0004a' : [36, 15],
+        'S0013'  : [12, 13],
+#         'S0011b' : [31, 23],
+        'S0011'  : [31, 23],
+        'S0010'  : [31, 21],
+        'C0004b' : [36, 15],
+        'S0004'  : [45, 24] }
+    return d[key]
+
+def obs_onsite_data(path, code, Pollutant, date_list):
+    df = pd.read_csv(path, usecols=['time', 'station_code', Pollutant]).rename(columns={Pollutant: "Pollutant"})
+    df = df[((df["time"].isin(date_list)) & (df["station_code"] == code))].drop(['station_code'], axis=1)
+    df['data'] = 'station_data'
+    return df
+
+def arguments(dt):
+    start_date = dt['st_date']
+    end_date = dt['en_date']
+    Future_hour = dt['F_hour']
+
     st_date = datetime.strptime(start_date, '%Y-%m-%d %H:%M:%S') - timedelta(hours=int(Future_hour))
     en_date = datetime.strptime(end_date, '%Y-%m-%d %H:%M:%S') - timedelta(hours=int(Future_hour))
     delta = en_date - st_date
-    days, seconds = delta.days, delta.seconds
-    hours = days * 24 + seconds // 3600
-    coords = station_coord(code)
-    
-    df_list = []
-#     for i in ['CMAQ', 'Our_Method']
-    for i in ['CMAQ']:
-        root_dir = 'data/'+ i + '/' + polu
-        pol_data = get_pollutant_data(root_dir)
-        whole_data = data(pol_data)
-        date_list = [str(st_date + timedelta(hours=i)) for i in range(hours +1)]
-        pol_lis = [whole_data[i][int(Future_hour)][coords[0]][coords[1]] for i in date_list]
-        df = pd.DataFrame({'time': date_list, 'pollutant': pol_lis})
-        df['data'] = i + '_data'
-        df_list.append(df)
-    return df_list
+    hours = delta.days * 24 + delta.seconds // 3600
+    date_list = [str(datetime.strptime(start_date,'%Y-%m-%d %H:%M:%S') + timedelta(hours=i)) for i in range(hours +1)]
+    date_list_1 = [str(st_date + timedelta(hours=i)) for i in range(hours +1)]
+    return st_date, en_date, date_list, date_list_1, Future_hour
 
-# Getting data from observatory station for time range
-def Obs_linedata(code, polu, start_date, end_date, future_hour ):
-    df = pd.read_csv('data/obs/' + code +'.csv', usecols=['time',polu])
-    df['time']= (pd.to_datetime(df['time']) + pd.Timedelta(hours=8)).dt.strftime('%Y-%m-%d %H:%M:%S')
-    df = df[(df['time'] >= start_date) & (df['time'] <= end_date)]
-    df['data'] = 'Obs_data'
-    df.rename(columns={polu: 'pollutant'},inplace = True)
-    return df
+def line_chart_1(dt, station_type):
+    Pollutant = dt['pollutant'].split()[0]
+    code = dt['St_code']
 
-# Getting the metrics value 
-def metrics(df_1, df_2):
-    act = df_1['pollutant'].values
-    pred = df_2['pollutant'].values
-    rmse = round(sqrt(mean_squared_error(act, pred)),2)
-    ioa = round(1 -(np.sum((act-pred)**2))/(np.sum((np.abs(pred-np.mean(act))+np.abs(act-np.mean(act)))**2)), 2)
-    return rmse, ioa
-
-# Combining all the data needed for line_chart_1
-def data_lineChart_1(dt):
-    Code = dt['St_code']
-    Polu = dt['pollutant']
-    Start_date = dt['st_date']
-    End_date = dt['en_date']
-    Future_hour = dt['F_hour']
-    df_list = method_linedata(Code, Polu, Start_date, End_date, Future_hour)
-    obs_df = Obs_linedata(Code, Polu, Start_date, End_date, Future_hour)
-    RMSE, IOA = metrics(df_list[0], obs_df)
-    df = pd.concat([df_list[0],obs_df])
+    data = []
+    metric = {}
+    st_date, en_date, date_list, date_list_1, Future_hour = arguments(dt)
+    station_df = obs_onsite_data('data/cache/obs/'+ station_type +'.csv', code, Pollutant, date_list)
+    data.append(station_df)
+    for i in ['CMAQ', 'Our_method']:
+        directory = os.path.join('data','cache',i,Pollutant)
+        month = [st_date.month, en_date.month]
+        coords = station_coord(code)
+        final_data, filename = month_data(month,directory)
+        whole_data = time_poldata(i, final_data, st_date)
+        pol_lis = [whole_data[i][int(Future_hour)][coords[1]][coords[0]] for i in date_list_1]
+        method_data = pd.DataFrame({'time': date_list, 'Pollutant': pol_lis, 'data': i+'_data'})
+        data.append(method_data)
+        RMSE, IOA = metrics(method_data, station_df)
+        metric['RMSE_'+i], metric['IOA_'+i] =  RMSE, IOA
+    df = pd.concat(data)
     result = df.to_dict('records')
-    return json.dumps([{'RMSE': RMSE, 'IOA': IOA, 'line_data': result}])
+    return json.dumps([{'RMSE': metric['RMSE_CMAQ'] , 'IOA': metric['IOA_CMAQ'], 'RMSE_our': metric['RMSE_Our_method'] , 'IOA_our': metric['IOA_Our_method'], 'line_data': result}])
+
+def line_chart_2(dt, station_type):
+    Pollutant = dt['pollutant'].split()[0]
+    onsite_code = dt['Onsite_code'].split(' ')[0]
+    Future_hour = dt['F_hour']
+    data = []
+    metric = {}
+
+    station_df = pd.read_csv('data/cache/onsite/onsite_data.csv', usecols= [Pollutant, 'time' , 'site_id']).loc[lambda df: df['site_id'] == onsite_code].rename(columns={Pollutant: "Pollutant"})
+    station_df.drop(['site_id'], axis=1, inplace = True)
+    station_df['data'] = 'station_data'
+    date_list = station_df['time'].tolist()
+    data.append(station_df)
+    for i in ['CMAQ', 'Our_method']:
+        directory = os.path.join('data','cache',i,Pollutant)
+        month = [datetime.strptime(date_list[0], '%Y-%m-%d %H:%M:%S').month, datetime.strptime(date_list[1], '%Y-%m-%d %H:%M:%S').month]
+        coords = onsite_coord(onsite_code)
+        final_data, filename = month_data(month,directory)
+        whole_data = time_poldata(i, final_data, datetime.strptime(date_list[0], '%Y-%m-%d %H:%M:%S'))
+        pol_lis = [whole_data[x][int(Future_hour)][coords[1]][coords[0]] for x in date_list]
+        method_data = pd.DataFrame({'time': date_list, 'Pollutant': pol_lis, 'data': i+'_data'})
+        data.append(method_data)
+        RMSE, IOA = metrics(method_data, station_df)
+        metric['RMSE_'+i], metric['IOA_'+i] =  RMSE, IOA
+    df = pd.concat(data)
+    result = df.to_dict('records')
+    return json.dumps([{'RMSE': metric['RMSE_CMAQ'] , 'IOA': metric['IOA_CMAQ'], 'RMSE_our': metric['RMSE_Our_method'] , 'IOA_our': metric['IOA_Our_method'], 'line_data': result}])
